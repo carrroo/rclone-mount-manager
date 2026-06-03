@@ -77,18 +77,18 @@
           <button
             v-if="!item.mounted"
             class="btn btn-success"
-            :disabled="store.loading"
+            :disabled="store.isPending(item.id)"
             @click="handleMount(item)"
           >
-            {{ t('mount.mount') }}
+            {{ store.isPending(item.id) ? '…' : t('mount.mount') }}
           </button>
           <button
             v-else
             class="btn btn-danger"
-            :disabled="store.loading"
+            :disabled="store.isPending(item.id)"
             @click="store.doUnmount(item)"
           >
-            {{ t('mount.unmount') }}
+            {{ store.isPending(item.id) ? '…' : t('mount.unmount') }}
           </button>
 
           <template v-if="!item.mounted">
@@ -109,7 +109,7 @@
             v-if="item.source === 'custom'"
             class="btn btn-danger"
             @click="store.removeCustomMount(item.id)"
-            :disabled="store.loading"
+            :disabled="store.isPending(item.id)"
           >
             {{ t('mount.delete') }}
           </button>
@@ -122,7 +122,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useMountStore, type MountItem } from '../stores/mounts';
+import { useMountStore } from '../stores/mounts';
+import type { MountItem } from '../types';
 
 const { t } = useI18n();
 const store = useMountStore();

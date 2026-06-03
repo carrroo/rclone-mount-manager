@@ -44,14 +44,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import type { Deps } from '../types';
 
 const { t } = useI18n();
-
-export interface Deps {
-  rclone_installed: boolean;
-  macfuse_installed: boolean;
-  rclone_version: string | null;
-}
 
 const show = ref(false);
 const deps = ref<Deps | null>(null);

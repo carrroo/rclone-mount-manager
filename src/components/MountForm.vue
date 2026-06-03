@@ -78,7 +78,7 @@ const form = ref({
   remote_path: '',
   mount_point: '',
   extra_args: [] as string[],
-  source: 'custom',
+  source: 'custom' as const,
   config_type: 'custom',
   host: '',
   user: '',

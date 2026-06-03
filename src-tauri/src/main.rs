@@ -98,7 +98,21 @@ fn main() {
                 ],
             )?;
 
-            let menu = Menu::with_items(app, &[&app_menu, &lang_menu])?;
+            // Edit submenu — required for ⌘X/C/V/A shortcuts to work in webview inputs
+            let edit_menu = Submenu::with_id_and_items(
+                app, "edit", t("menu.edit", cur), true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?;
+
+            let menu = Menu::with_items(app, &[&app_menu, &edit_menu, &lang_menu])?;
             app.set_menu(menu)?;
 
             // Tray menu — reuse the same show_i and quit_i instances

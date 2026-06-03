@@ -1,16 +1,30 @@
+/**
+ * Icon generator — reads an SVG source and produces all required
+ * PNG icons for the Tauri bundle (app icons + tray icons).
+ *
+ * Usage:
+ *   ICON_SVG=path/to/icon.svg node scripts/gen-icons.mjs
+ *
+ * If ICON_SVG is not set, defaults to scripts/assets/icon.svg.
+ */
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const iconDir = '/Users/carroo/claude/rclone_ui/src-tauri/icons';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const iconDir = path.join(__dirname, '..', 'src-tauri', 'icons');
 
-// Read the link SVG and replace color with white
-const svgContent = fs.readFileSync('/Users/carroo/Downloads/挂载 (1).svg', 'utf8');
+// SVG source path — override via ICON_SVG env var, or fall back to scripts/assets/icon.svg
+const svgSource = process.env.ICON_SVG || path.join(__dirname, 'assets', 'icon.svg');
+
+// Read the SVG and replace the default gray fill with white for app icons
+const svgContent = fs.readFileSync(svgSource, 'utf8');
 const whiteSvg = svgContent.replace(/#515151/g, '#FFFFFF');
 const pathMatch = whiteSvg.match(/<path[^>]*d="([^"]+)"/);
 const iconPath = pathMatch ? pathMatch[1] : '';
 
-// Generate app icon using a single flat SVG (no nested svg tags)
+// Generate app icons — blue rounded square with white icon
 const sizes = [16, 32, 64, 128, 256, 512, 1024];
 const cornerRadius = 230;
 
@@ -33,7 +47,7 @@ for (const size of sizes) {
   console.log(`app-${size}.png done`);
 }
 
-// Copy to standard names for bundle
+// Copy to Tauri's expected icon filenames for bundling
 const names = {
   'app-16.png': '16x16.png',
   'app-32.png': '32x32.png',
@@ -47,8 +61,8 @@ for (const [src, dst] of Object.entries(names)) {
   fs.copyFileSync(path.join(iconDir, src), path.join(iconDir, dst));
 }
 
-// Generate tray icons (transparent, using the same icon as app but original gray color for template image)
-const traySvgContent = fs.readFileSync('/Users/carroo/Downloads/挂载 (1).svg', 'utf8');
+// Generate tray icons — gray icon on transparent background (macOS template image)
+const traySvgContent = fs.readFileSync(svgSource, 'utf8');
 const trayPathMatch = traySvgContent.match(/<path[^>]*d="([^"]+)"/);
 const trayIconPath = trayPathMatch ? trayPathMatch[1] : '';
 for (const size of [16, 32]) {

@@ -1,3 +1,6 @@
+//! Tauri command handlers — thin wrappers that delegate to the rclone module
+//! and wrap results in ApiResponse<T>.
+
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
@@ -23,11 +26,11 @@ impl<T> ApiResponse<T> {
         }
     }
 
-    pub fn err(msg: String) -> Self {
+    pub fn err(msg: impl Into<String>) -> Self {
         Self {
             success: false,
             data: None,
-            error: Some(msg),
+            error: Some(msg.into()),
         }
     }
 }
