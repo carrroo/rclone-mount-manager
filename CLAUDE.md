@@ -60,3 +60,29 @@ There are no tests, linter, or formatter configured.
 - **Language stored in two places:** Rust writes to `~/.config/rclone-mount-manager/language`; frontend syncs via Tauri commands.
 - **Security:** `is_safe_arg()` blocks shell metacharacters; `is_path_allowed()` restricts mount points to `/Volumes/` or home directory; config updates whitelisted to specific keys.
 - **Tauri capabilities** defined in `src-tauri/capabilities/default.json`.
+
+## macOS Development Notes
+
+### Launch Services Stale Entries
+
+Development can leave orphaned Launch Services records, causing duplicate app icons in Launchpad. Root causes:
+
+1. **Bundle ID changed** — macOS treats old and new `identifier` in `tauri.conf.json` as separate apps
+2. **Build artifacts scattered** — `npm run tauri-build` creates `.app` under `target/release/bundle/macos/`; double-clicking it registers the app
+3. **Running from DMG** — opening the app directly from a mounted DMG before dragging it to `/Applications` leaves orphan records
+
+**Full cleanup (both steps required):**
+
+```bash
+# 1. Delete the Launch Services database
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -delete
+
+# 2. sudo reboot to force a complete rebuild (plain reboot is not enough)
+sudo reboot
+```
+
+**Prevention:**
+- Keep the Bundle ID stable once set
+- Remove `target/release/bundle/macos/*.app` after each build (see `clean-bundle` script)
+- Always drag `.app` to `/Applications` first; never run directly from the DMG
+- Use `npm run tauri-dev` for local testing instead of double-clicking build artifacts
