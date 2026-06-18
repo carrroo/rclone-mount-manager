@@ -49,21 +49,25 @@
           </div>
 
           <template v-if="editingId === item.id && !item.mounted">
-            <div class="info-row">
-              <label>{{ t('config.host') }}</label>
-              <input v-model="editForm.host" class="edit-input" :placeholder="t('form.hostPlaceholder')" />
+            <div class="edit-row">
+              <div class="info-row">
+                <label>{{ t('config.host') }}</label>
+                <input v-model="editForm.host" class="edit-input" :placeholder="t('form.hostPlaceholder')" />
+              </div>
+              <div class="info-row">
+                <label>{{ t('config.port') }}</label>
+                <input v-model="editForm.port" class="edit-input" :placeholder="t('form.portPlaceholder')" />
+              </div>
             </div>
-            <div class="info-row">
-              <label>{{ t('config.port') }}</label>
-              <input v-model="editForm.port" class="edit-input" :placeholder="t('form.portPlaceholder')" />
-            </div>
-            <div class="info-row">
-              <label>{{ t('config.user') }}</label>
-              <input v-model="editForm.user" class="edit-input" :placeholder="t('form.userPlaceholder')" />
-            </div>
-            <div class="info-row">
-              <label>{{ t('config.password') }}</label>
-              <input v-model="editForm.pass" type="password" class="edit-input" :placeholder="t('form.passwordPlaceholder')" />
+            <div class="edit-row">
+              <div class="info-row">
+                <label>{{ t('config.user') }}</label>
+                <input v-model="editForm.user" class="edit-input" :placeholder="t('form.userPlaceholder')" />
+              </div>
+              <div class="info-row">
+                <label>{{ t('config.password') }}</label>
+                <input v-model="editForm.pass" type="password" class="edit-input" :placeholder="t('form.passwordPlaceholder')" />
+              </div>
             </div>
           </template>
 
@@ -292,6 +296,12 @@ function cancelEdit() {
 .tag-custom {
   background: #f3e5f5;
   color: #7b1fa2;
+}
+
+.edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 .card-footer {
