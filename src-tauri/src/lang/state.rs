@@ -13,9 +13,12 @@ pub static LANG_SYSTEM: AtomicBool = AtomicBool::new(true);
 pub static LANG_ZH: AtomicBool = AtomicBool::new(false);
 pub static LANG_EN: AtomicBool = AtomicBool::new(false);
 
-/// Detect whether the system locale is Chinese via the LANG env var.
+/// Detect whether the system locale is Chinese.
+///
+/// Uses `sys-locale` which reads NSLocale on macOS — works in GUI apps
+/// where the `LANG` environment variable is typically unset.
 pub fn detect_system_is_zh() -> bool {
-    std::env::var("LANG")
+    sys_locale::get_locale()
         .map(|l| l.starts_with("zh"))
         .unwrap_or(false)
 }
