@@ -17,7 +17,7 @@ A macOS menu bar app for managing rclone mounts with a clean GUI. Built with Tau
 
 ## Screenshots
 
-![Main Window](https://github.com/user-attachments/assets/71521cdd-e689-4f2e-a875-8d91a822a9e8?text=Main+Window)
+![Main Window](https://github.com/user-attachments/assets/560a6b40-4248-49ae-95d3-c6e98a3b331e?text=Main+Window)
 
 ## Prerequisites
 
