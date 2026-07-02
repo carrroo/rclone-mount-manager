@@ -1,17 +1,21 @@
-//! Language state — atomic globals, persistence, and event emission.
+//! Language state — atomic global, persistence, and event emission.
 //!
-//! Three mutually exclusive AtomicBool flags track the current language:
-//! `LANG_SYSTEM` (follow OS), `LANG_ZH`, `LANG_EN`.
-//! Exactly one is `true` at any time.
+//! A single `AtomicU8` encodes the current language setting:
+//! - `LANG_CODE_SYSTEM` (0) — follow OS locale
+//! - `LANG_CODE_ZH` (1) — Chinese
+//! - `LANG_CODE_EN` (2) — English
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use tauri::{AppHandle, Emitter};
 
-/// Global language flags — exactly one is true at a time.
-pub static LANG_SYSTEM: AtomicBool = AtomicBool::new(true);
-pub static LANG_ZH: AtomicBool = AtomicBool::new(false);
-pub static LANG_EN: AtomicBool = AtomicBool::new(false);
+/// Language encoding constants.
+pub const LANG_CODE_SYSTEM: u8 = 0;
+pub const LANG_CODE_ZH: u8 = 1;
+pub const LANG_CODE_EN: u8 = 2;
+
+/// Global language state — stores one of the `LANG_CODE_*` constants.
+static LANG: AtomicU8 = AtomicU8::new(LANG_CODE_SYSTEM);
 
 /// Detect whether the system locale is Chinese.
 ///
@@ -25,13 +29,16 @@ pub fn detect_system_is_zh() -> bool {
 
 /// Return the raw language setting ("zh", "en", or "system").
 pub fn current_lang() -> &'static str {
-    if LANG_ZH.load(Ordering::SeqCst) {
-        "zh"
-    } else if LANG_EN.load(Ordering::SeqCst) {
-        "en"
-    } else {
-        "system"
+    match LANG.load(Ordering::SeqCst) {
+        LANG_CODE_ZH => "zh",
+        LANG_CODE_EN => "en",
+        _ => "system",
     }
+}
+
+/// Return the current language code for display purposes.
+pub fn current_lang_code() -> u8 {
+    LANG.load(Ordering::SeqCst)
 }
 
 /// Resolve the effective locale ("zh" or "en") by expanding "system".
@@ -61,28 +68,23 @@ fn save_language_setting(lang: &str) {
 
 /// Emit a `language-changed` event to the frontend with the resolved locale.
 fn emit_language_change(app: &AppHandle) {
-    let lang = if LANG_ZH.load(Ordering::SeqCst) {
-        "zh".to_string()
-    } else if LANG_EN.load(Ordering::SeqCst) {
-        "en".to_string()
-    } else if detect_system_is_zh() {
-        "zh".to_string()
-    } else {
-        "en".to_string()
+    let lang = match LANG.load(Ordering::SeqCst) {
+        LANG_CODE_ZH => "zh",
+        LANG_CODE_EN => "en",
+        _ if detect_system_is_zh() => "zh",
+        _ => "en",
     };
     let _ = app.emit("language-changed", lang);
 }
 
 /// Apply a language change: update atomic state, menu text, persistence, and notify frontend.
 pub fn apply_lang(app: &AppHandle, lang: &str) {
-    let (sys, zh, en) = match lang {
-        "zh" => (false, true, false),
-        "en" => (false, false, true),
-        _ => (true, false, false),
+    let code = match lang {
+        "zh" => LANG_CODE_ZH,
+        "en" => LANG_CODE_EN,
+        _ => LANG_CODE_SYSTEM,
     };
-    LANG_SYSTEM.store(sys, Ordering::SeqCst);
-    LANG_ZH.store(zh, Ordering::SeqCst);
-    LANG_EN.store(en, Ordering::SeqCst);
+    LANG.store(code, Ordering::SeqCst);
 
     super::menu::update_lang_menu_text(app, lang);
     save_language_setting(lang);
@@ -99,14 +101,10 @@ pub fn init_language_state() {
     )
     .unwrap_or_default();
 
-    // Reset all flags first to ensure mutual exclusion
-    LANG_SYSTEM.store(false, Ordering::SeqCst);
-    LANG_ZH.store(false, Ordering::SeqCst);
-    LANG_EN.store(false, Ordering::SeqCst);
-
-    match saved.trim() {
-        "zh" => LANG_ZH.store(true, Ordering::SeqCst),
-        "en" => LANG_EN.store(true, Ordering::SeqCst),
-        _ => LANG_SYSTEM.store(true, Ordering::SeqCst),
-    }
+    let code = match saved.trim() {
+        "zh" => LANG_CODE_ZH,
+        "en" => LANG_CODE_EN,
+        _ => LANG_CODE_SYSTEM,
+    };
+    LANG.store(code, Ordering::SeqCst);
 }

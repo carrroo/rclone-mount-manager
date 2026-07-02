@@ -2,7 +2,6 @@
 //! and wrap results in ApiResponse<T>.
 
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
@@ -89,22 +88,8 @@ pub fn check_dependencies(manager: State<RcloneManager>) -> ApiResponse<Dependen
 }
 
 #[tauri::command]
-pub fn start_auto_reconnect(
-    manager: State<RcloneManager>,
-    configs: Vec<MountItem>,
-) {
-    manager.start_reconnect_monitor(configs);
-}
-
-#[tauri::command]
 pub fn get_language() -> String {
-    if LANG_ZH.load(Ordering::SeqCst) {
-        "zh".to_string()
-    } else if LANG_EN.load(Ordering::SeqCst) {
-        "en".to_string()
-    } else {
-        "system".to_string()
-    }
+    current_lang().to_string()
 }
 
 #[tauri::command]

@@ -38,13 +38,6 @@ export async function updateRemoteConfig(name: string, updates: Record<string, s
   return call<null>("update_remote_config", { name, updates });
 }
 
-// ── Auto-reconnect ───────────────────────────────────────
-
-/** Start the background reconnect monitor for custom mounts. */
-export async function startAutoReconnect(configs: unknown) {
-  return call<null>("start_auto_reconnect", { configs });
-}
-
 // ── Dependencies ──────────────────────────────────────────
 
 /** Check whether rclone and macFUSE are installed. */

@@ -12,7 +12,7 @@
         <button class="btn btn-primary" @click="showForm = true">
           {{ t('header.addMount') }}
         </button>
-        <button class="btn" @click="store.refresh">{{ t('header.refresh') }}</button>
+        <button class="btn" @click="store.loadMounts">{{ t('header.refresh') }}</button>
       </div>
     </header>
 
@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMountStore } from "./stores/mounts";
 import { useSettingsStore } from "./stores/settings";
@@ -49,6 +49,8 @@ const store = useMountStore();
 const settings = useSettingsStore();
 const showForm = ref(false);
 const depCheck = ref<InstanceType<typeof DependencyCheck> | null>(null);
+
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 function onSaved() {
   showForm.value = false;
@@ -68,13 +70,41 @@ async function checkDeps(showOnlyOnError = false) {
   }
 }
 
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(() => {
+    store.loadMounts();
+  }, 5000);
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+function onVisibilityChange() {
+  if (document.hidden) {
+    stopPolling();
+  } else {
+    startPolling();
+  }
+}
+
 onMounted(async () => {
   await settings.initLanguage();
   await store.loadMounts();
   await checkDeps(true);
 
-  setInterval(() => {
-    store.loadMounts();
-  }, 5000);
+  startPolling();
+
+  // Pause polling when window is hidden, resume when shown
+  document.addEventListener("visibilitychange", onVisibilityChange);
+});
+
+onUnmounted(() => {
+  stopPolling();
+  document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 </script>

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri-dev": "tauri dev",
-    "tauri-build": "tauri build",
+    "tauri-build": "tauri build && scripts/set-dmg-icon.sh src-tauri/target/release/bundle/dmg/*.dmg src-tauri/icons",
     "clean-bundle": "rm -rf src-tauri/target/release/bundle/macos/*.app"
   },
   "dependencies": {

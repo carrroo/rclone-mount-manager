@@ -15,13 +15,15 @@ mod mount;
 mod monitor;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 
 pub use config::{read_remotes, update_remote_config, RemoteConfig, ALLOWED_CONFIG_KEYS};
 pub use deps::{check_dependencies, DependencyCheck};
 pub(crate) use detect::detect_mounted_remotes;
 pub use detect::{find_rclone, is_path_allowed, is_safe_arg, is_mount_point_active};
 pub use mount::{build_mount_command, do_mount, do_unmount};
-pub use monitor::start_reconnect_monitor;
 
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +51,10 @@ pub struct MountItem {
 /// Central manager for rclone operations.
 pub struct RcloneManager {
     config_path: PathBuf,
+    /// Cancellation flag for the reconnect monitor thread.
+    monitor_cancel: Arc<AtomicBool>,
+    /// Handle to the running monitor thread (if any).
+    monitor_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl RcloneManager {
@@ -57,7 +63,11 @@ impl RcloneManager {
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join(".config/rclone/rclone.conf");
 
-        Self { config_path }
+        Self {
+            config_path,
+            monitor_cancel: Arc::new(AtomicBool::new(false)),
+            monitor_handle: Mutex::new(None),
+        }
     }
 
     pub fn config_path(&self) -> &PathBuf {
@@ -123,7 +133,30 @@ impl RcloneManager {
         check_dependencies()
     }
 
+    /// Start the auto-reconnect monitor. Stops any existing monitor first.
     pub fn start_reconnect_monitor(&self, configs: Vec<MountItem>) {
-        start_reconnect_monitor(configs);
+        // Stop existing monitor if running
+        self.stop_reconnect_monitor();
+
+        // Reset cancellation flag
+        self.monitor_cancel.store(false, Ordering::Relaxed);
+
+        // Start new monitor
+        let handle = monitor::start_reconnect_monitor(configs, self.monitor_cancel.clone());
+
+        if let Ok(mut guard) = self.monitor_handle.lock() {
+            *guard = handle;
+        }
+    }
+
+    /// Stop the auto-reconnect monitor and wait for it to finish.
+    pub fn stop_reconnect_monitor(&self) {
+        self.monitor_cancel.store(true, Ordering::Relaxed);
+
+        if let Ok(mut guard) = self.monitor_handle.lock() {
+            if let Some(handle) = guard.take() {
+                let _ = handle.join();
+            }
+        }
     }
 }

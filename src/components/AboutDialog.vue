@@ -3,7 +3,7 @@
     <div class="modal">
       <h3>Rclone Mount Manager</h3>
       <div class="about-body">
-        <p class="version">v0.1.0</p>
+        <p class="version">v{{ appVersion }}</p>
         <p class="desc">{{ t('about.desc') }}</p>
         <p class="license">MIT License</p>
       </div>
@@ -18,15 +18,22 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getVersion } from '@tauri-apps/api/app';
 
 const { t } = useI18n();
 const show = ref(false);
+const appVersion = ref('');
 let unlisten: UnlistenFn | null = null;
 
 onMounted(async () => {
   unlisten = await listen('show-about', () => {
     show.value = true;
   });
+  try {
+    appVersion.value = await getVersion();
+  } catch {
+    appVersion.value = '0.0.0';
+  }
 });
 
 onUnmounted(() => {

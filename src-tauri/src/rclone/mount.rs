@@ -1,16 +1,21 @@
 //! Mount and unmount operations — builds rclone mount commands
 //! and executes diskutil for unmounting.
 
-use std::path::PathBuf;
+use std::fs::OpenOptions;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use crate::error::AppError;
 use super::detect::{find_rclone, is_path_allowed, is_safe_arg};
 
-/// Build a nohup rclone mount command with logging.
+/// Build an rclone mount command (not yet spawned).
+///
+/// Returns a `Command` configured with all arguments. The caller is
+/// responsible for spawning it. Stdin is null; stdout/stderr should
+/// be redirected by the caller (e.g. to a log file).
 pub fn build_mount_command(
-    rclone_path: &PathBuf,
+    rclone_path: &Path,
     remote_path: &str,
     mount_point: &str,
     extra_args: &[String],
@@ -27,30 +32,23 @@ pub fn build_mount_command(
         }
     }
 
-    let log_dir = dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("rclone-mount-manager");
-    let _ = std::fs::create_dir_all(&log_dir);
-    let log_path = log_dir.join("rclone-mount.log");
+    let mut cmd = Command::new(rclone_path);
+    cmd.arg("mount")
+        .arg(remote_path)
+        .arg(mount_point)
+        .arg("--vfs-cache-mode")
+        .arg("full")
+        .arg("--allow-non-empty")
+        .stdin(Stdio::null());
 
-    let mut cmd = Command::new("bash");
-    cmd.arg("-c")
-        .arg(format!(
-            "nohup \"{}\" mount '{}' '{}' --vfs-cache-mode full --allow-non-empty {} > /dev/null 2>\"{}\" &",
-            rclone_path.display(),
-            remote_path.replace("'", "'\\''"),
-            mount_point.replace("'", "'\\''"),
-            extra_args.iter().map(|a| format!("'{}'", a.replace("'", "'\\''"))).collect::<Vec<_>>().join(" "),
-            log_path.display(),
-        ))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    for arg in extra_args {
+        cmd.arg(arg);
+    }
 
     Ok(cmd)
 }
 
-/// Execute an rclone mount.
+/// Execute an rclone mount — spawns rclone as a background process.
 pub fn do_mount(remote_path: &str, mount_point: &str, extra_args: &[String]) -> Result<(), String> {
     let rclone_path = find_rclone().ok_or_else(|| AppError::RcloneNotFound.to_string())?;
 
@@ -60,16 +58,24 @@ pub fn do_mount(remote_path: &str, mount_point: &str, extra_args: &[String]) -> 
 
     std::fs::create_dir_all(mount_point).map_err(|e| AppError::CreateDirFailed(e).to_string())?;
 
-    let mut cmd = build_mount_command(&rclone_path, remote_path, mount_point, extra_args)?;
+    let log_dir = dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("rclone-mount-manager");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("rclone-mount.log");
 
-    let output = cmd
-        .output()
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
         .map_err(|e| AppError::MountFailed(e.to_string()).to_string())?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::MountFailed(stderr.to_string()).to_string());
-    }
+    let mut cmd = build_mount_command(&rclone_path, remote_path, mount_point, extra_args)?;
+    cmd.stdout(Stdio::from(log_file.try_clone().map_err(|e| AppError::MountFailed(e.to_string()).to_string())?));
+    cmd.stderr(Stdio::from(log_file));
+
+    cmd.spawn()
+        .map_err(|e| AppError::MountFailed(e.to_string()).to_string())?;
 
     Ok(())
 }
@@ -80,27 +86,19 @@ pub fn do_mount(remote_path: &str, mount_point: &str, extra_args: &[String]) -> 
 /// left a zombie FUSE mount), we kill the rclone process for that
 /// mount point and retry once.
 pub fn do_unmount(mount_point: &str) -> Result<(), String> {
+    // Validate mount_point to prevent injection in kill_rclone_for_mount
+    if !is_safe_arg(mount_point) {
+        return Err(AppError::InvalidArg("invalid mount point".to_string()).to_string());
+    }
+    if !is_path_allowed(mount_point) {
+        return Err(AppError::PathNotAllowed.to_string());
+    }
+
     // Try unmount with a 10s timeout
     match unmount_with_timeout(mount_point, Duration::from_secs(10)) {
         Ok(output) if output.status.success() => return Ok(()),
-        Ok(_output) => {
-            // diskutil returned quickly but failed — try killing rclone first
-            kill_rclone_for_mount(mount_point);
-            // Retry once
-            let retry = Command::new("diskutil")
-                .arg("unmount")
-                .arg("force")
-                .arg(mount_point)
-                .output()
-                .map_err(|e| AppError::UnmountFailed(e.to_string()).to_string())?;
-            if retry.status.success() {
-                return Ok(());
-            }
-            let stderr = String::from_utf8_lossy(&retry.stderr);
-            return Err(AppError::UnmountFailed(stderr.to_string()).to_string());
-        }
-        Err(_) => {
-            // Timed out — kill rclone for this mount and retry
+        _ => {
+            // Failed or timed out — kill rclone and retry once
             kill_rclone_for_mount(mount_point);
             let retry = Command::new("diskutil")
                 .arg("unmount")
@@ -112,7 +110,7 @@ pub fn do_unmount(mount_point: &str) -> Result<(), String> {
                 return Ok(());
             }
             let stderr = String::from_utf8_lossy(&retry.stderr);
-            return Err(AppError::UnmountFailed(stderr.to_string()).to_string());
+            Err(AppError::UnmountFailed(stderr.to_string()).to_string())
         }
     }
 }
@@ -167,18 +165,37 @@ fn unmount_with_timeout(mount_point: &str, timeout: Duration) -> Result<std::pro
 }
 
 /// Find and kill the rclone process serving a specific mount point.
+///
+/// Uses `pgrep -f` to find rclone processes whose command-line args
+/// contain the mount point, then sends SIGKILL via `kill -9`.
+/// Runs pgrep and kill as separate commands (no shell interpolation)
+/// to avoid shell injection.
 fn kill_rclone_for_mount(mount_point: &str) {
-    // Use pgrep + pkill approach: find rclone processes whose args contain the mount point
-    let _ = Command::new("bash")
-        .arg("-c")
-        .arg(format!(
-            "pgrep -f 'rclone mount.*{}' | xargs kill -9 2>/dev/null || true",
-            mount_point.replace("'", "'\\''"),
-        ))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
+    let pattern = format!("rclone mount.*{}", mount_point.replace("'", "'\\''"));
+
+    // pgrep returns matching PIDs, one per line
+    let output = match Command::new("pgrep")
+        .arg("-f")
+        .arg(&pattern)
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .status();
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return, // no matches or pgrep error
+    };
+
+    let pids = String::from_utf8_lossy(&output.stdout);
+    for pid in pids.lines() {
+        if let Ok(pid_num) = pid.trim().parse::<i32>() {
+            let _ = Command::new("kill")
+                .arg("-9")
+                .arg(pid_num.to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
 
     // Give the kernel a moment to clean up the FUSE connection
     std::thread::sleep(Duration::from_millis(500));

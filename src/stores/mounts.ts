@@ -12,7 +12,7 @@ import * as api from "../api";
 
 /** Generate a unique ID for custom mounts. */
 function generateId(): string {
-  return "custom:" + Date.now().toString(36) + Math.random().toString(36).substr(2);
+  return "custom:" + crypto.randomUUID();
 }
 
 /** localStorage keys for persisted mount data. */
@@ -140,8 +140,8 @@ export const useMountStore = defineStore("mounts", () => {
             mount_point: item.mount_point,
             host: item.host,
             user: item.user,
-            pass: item.pass,
             port: item.port,
+            // pass intentionally not persisted for security
           };
           saveRemoteConfigs(saved);
         }
@@ -214,8 +214,8 @@ export const useMountStore = defineStore("mounts", () => {
         mount_point: mountPoint,
         host,
         user,
-        pass,
         port,
+        // pass intentionally not persisted for security
       };
       saveRemoteConfigs(saved);
     }
@@ -241,10 +241,6 @@ export const useMountStore = defineStore("mounts", () => {
     items.value = items.value.filter((m) => m.id !== id);
   }
 
-  async function refresh() {
-    await loadMounts();
-  }
-
   return {
     items,
     loading,
@@ -258,6 +254,5 @@ export const useMountStore = defineStore("mounts", () => {
     updateMountConfig,
     addCustomMount,
     removeCustomMount,
-    refresh,
   };
 });

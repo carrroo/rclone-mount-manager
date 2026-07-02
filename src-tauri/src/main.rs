@@ -30,7 +30,6 @@ fn main() {
             mount_remote,
             unmount_remote,
             update_remote_config,
-            start_auto_reconnect,
             check_dependencies,
             get_language,
             set_language,
@@ -83,7 +82,7 @@ fn main() {
                 Some("About Rclone Mount Manager"),
                 Some(AboutMetadata {
                     name: Some("Rclone Mount Manager".to_string()),
-                    version: Some("0.1.0".to_string()),
+                    version: Some(env!("CARGO_PKG_VERSION").to_string()),
                     ..Default::default()
                 }),
             )?;
@@ -158,7 +157,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("构建失败")
+        .expect("build failed")
         .run(|app_handle, event| {
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { .. } = event {

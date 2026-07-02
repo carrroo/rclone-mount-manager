@@ -21,13 +21,15 @@ export interface RemoteConfig {
   options: Record<string, string>;
 }
 
-/** Persisted config overrides for a config-sourced remote. */
+/** Persisted config overrides for a config-sourced remote.
+ *  Note: `pass` is intentionally excluded — credentials are not
+ *  persisted in localStorage for security. */
 export interface SavedRemoteConfig {
   name: string;
   remote_path: string;
   mount_point: string;
   host: string;
   user: string;
-  pass: string;
   port: string;
+  pass?: string;
 }

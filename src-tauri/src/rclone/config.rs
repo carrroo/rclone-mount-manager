@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,18 @@ use crate::error::AppError;
 
 /// Keys that may be updated in a remote section via the frontend.
 pub const ALLOWED_CONFIG_KEYS: &[&str] = &["host", "user", "pass", "port"];
+
+/// Cached regex for matching INI section headers like `[name]`.
+static SECTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[(.+?)\]").unwrap());
+
+/// Cached regex for matching key=value lines.
+static KV_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(\w+)\s*=\s*(.+)").unwrap());
+
+/// Cached regex for matching key=value lines with leading whitespace preserved.
+static KV_FULL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(\s*)(\w+)(\s*=\s*)(.*)").unwrap());
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteConfig {
@@ -27,8 +40,6 @@ pub fn read_remotes(config_path: &Path) -> Result<Vec<RemoteConfig>, String> {
         .map_err(|e| AppError::ConfReadFailed(e).to_string())?;
 
     let mut remotes = Vec::new();
-    let section_re = Regex::new(r"\[(.+?)\]").unwrap();
-    let kv_re = Regex::new(r"^\s*(\w+)\s*=\s*(.+)").unwrap();
 
     let mut current_name: Option<String> = None;
     let mut current_options: HashMap<String, String> = HashMap::new();
@@ -39,7 +50,7 @@ pub fn read_remotes(config_path: &Path) -> Result<Vec<RemoteConfig>, String> {
             continue;
         }
 
-        if let Some(caps) = section_re.captures(line) {
+        if let Some(caps) = SECTION_RE.captures(line) {
             if let Some(name) = current_name.take() {
                 let config_type = current_options
                     .remove("type")
@@ -51,7 +62,7 @@ pub fn read_remotes(config_path: &Path) -> Result<Vec<RemoteConfig>, String> {
                 });
             }
             current_name = Some(caps[1].to_string());
-        } else if let Some(caps) = kv_re.captures(line) {
+        } else if let Some(caps) = KV_RE.captures(line) {
             current_options.insert(caps[1].to_string(), caps[2].to_string());
         }
     }
@@ -92,9 +103,6 @@ pub fn update_remote_config(
     let content = std::fs::read_to_string(config_path)
         .map_err(|e| AppError::ConfReadFailed(e).to_string())?;
 
-    let section_re = Regex::new(r"\[(.+?)\]").unwrap();
-    let kv_re = Regex::new(r"^(\s*)(\w+)(\s*=\s*)(.*)").unwrap();
-
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
     let mut in_target = false;
     let mut remaining: HashSet<String> = updates.keys().cloned().collect();
@@ -102,14 +110,14 @@ pub fn update_remote_config(
 
     for i in 0..lines.len() {
         let trimmed = lines[i].trim();
-        if let Some(caps) = section_re.captures(trimmed) {
+        if let Some(caps) = SECTION_RE.captures(trimmed) {
             if in_target {
                 insert_pos = Some(i);
                 break;
             }
             in_target = caps[1].to_string() == name;
         } else if in_target {
-            if let Some(caps) = kv_re.captures(&lines[i]) {
+            if let Some(caps) = KV_FULL_RE.captures(&lines[i]) {
                 let key = caps[2].to_string();
                 if let Some(new_val) = updates.get(&key) {
                     lines[i] = format!("{}{}{}{}", &caps[1], &caps[2], &caps[3], new_val);
