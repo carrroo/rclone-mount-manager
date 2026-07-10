@@ -38,6 +38,21 @@ export async function updateRemoteConfig(name: string, updates: Record<string, s
   return call<null>("update_remote_config", { name, updates });
 }
 
+/** Add a new remote section to rclone.conf. */
+export async function addRemoteConfig(name: string, configType: string, options: Record<string, string>) {
+  return call<null>("add_remote_config", { name, configType, options });
+}
+
+/** Save mount path preferences for a remote. */
+export async function saveMountPref(name: string, remotePath: string, mountPoint: string) {
+  return call<null>("save_mount_pref", { name, remotePath, mountPoint });
+}
+
+/** Save display order of remotes. */
+export async function saveMountOrder(order: string[]) {
+  return call<null>("save_mount_order", { order });
+}
+
 // ── Dependencies ──────────────────────────────────────────
 
 /** Check whether rclone and macFUSE are installed. */

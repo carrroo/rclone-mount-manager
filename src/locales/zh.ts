@@ -23,10 +23,11 @@ export default {
     mountedCount: '{count} 个已挂载',
   },
   form: {
-    addCustom: '添加自定义挂载',
+    addCustom: '添加挂载',
     name: '名称',
     selectRemote: '远程存储（从 rclone.conf 中选择）',
-    remotePlaceholder: '如：nas:/movies',
+    remoteDir: '远程目录',
+    remoteDirPlaceholder: '如：/movies 或 /data/files',
     mountPointPlaceholder: '如：/Volumes/nas-movies',
     namePlaceholder: '如：NAS 电影库',
     hostPlaceholder: '如：192.168.1.1',
@@ -35,6 +36,10 @@ export default {
     passwordPlaceholder: '密码',
     extraArgsPlaceholder: '如：--read-only --allow-other',
     selectRemotePlaceholder: '-- 选择远程存储 --',
+    typeSftp: 'SFTP',
+    typeWebdav: 'WebDAV',
+    typeHttp: 'HTTP',
+    typeFtp: 'FTP',
   },
   deps: {
     title: '依赖检测',
@@ -57,8 +62,7 @@ export default {
     hint: '请在 ~/.config/rclone/rclone.conf 中添加配置',
   },
   tag: {
-    fromConfig: '来自 rclone.conf',
-    custom: '自定义',
+    config: 'rclone.conf',
   },
   header: {
     checkDeps: '检测依赖',

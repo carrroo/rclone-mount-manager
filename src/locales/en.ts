@@ -23,10 +23,11 @@ export default {
     mountedCount: '{count} mounted',
   },
   form: {
-    addCustom: 'Add Custom Mount',
+    addCustom: 'Add Mount',
     name: 'Name',
     selectRemote: 'Remote (select from rclone.conf)',
-    remotePlaceholder: 'e.g.: nas:/movies',
+    remoteDir: 'Remote Directory',
+    remoteDirPlaceholder: 'e.g.: /movies or /data/files',
     mountPointPlaceholder: 'e.g.: /Volumes/nas-movies',
     namePlaceholder: 'e.g.: NAS Movies',
     hostPlaceholder: 'e.g.: 192.168.1.1',
@@ -35,6 +36,10 @@ export default {
     passwordPlaceholder: 'Password',
     extraArgsPlaceholder: 'e.g.: --read-only --allow-other',
     selectRemotePlaceholder: '-- Select remote --',
+    typeSftp: 'SFTP',
+    typeWebdav: 'WebDAV',
+    typeHttp: 'HTTP',
+    typeFtp: 'FTP',
   },
   deps: {
     title: 'Dependency Check',
@@ -57,8 +62,7 @@ export default {
     hint: 'Please add config in ~/.config/rclone/rclone.conf',
   },
   tag: {
-    fromConfig: 'From rclone.conf',
-    custom: 'Custom',
+    config: 'rclone.conf',
   },
   header: {
     checkDeps: 'Check Deps',

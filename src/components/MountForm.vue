@@ -9,6 +9,15 @@
 
     <div class="form-row">
       <div class="form-group">
+        <label>{{ t('config.type') }}</label>
+        <select v-model="form.config_type">
+          <option value="sftp">{{ t('form.typeSftp') }}</option>
+          <option value="webdav">{{ t('form.typeWebdav') }}</option>
+          <option value="http">{{ t('form.typeHttp') }}</option>
+          <option value="ftp">{{ t('form.typeFtp') }}</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label>{{ t('form.selectRemote') }}</label>
         <select v-model="selectedRemote">
           <option value="">{{ t('form.selectRemotePlaceholder') }}</option>
@@ -17,9 +26,13 @@
           </option>
         </select>
       </div>
-      <div class="form-group">
-        <label>{{ t('config.remotePath') }}</label>
-        <input v-model="form.remote_path" :placeholder="t('form.remotePlaceholder')" />
+    </div>
+
+    <div class="form-group">
+      <label>{{ t('form.remoteDir') }}</label>
+      <div class="path-input">
+        <span class="path-prefix" v-if="selectedRemote">{{ selectedRemote }}:</span>
+        <input v-model="remoteDir" :placeholder="t('form.remoteDirPlaceholder')" />
       </div>
     </div>
 
@@ -75,11 +88,8 @@ const emit = defineEmits(['close', 'saved']);
 
 const form = ref({
   name: '',
-  remote_path: '',
   mount_point: '',
-  extra_args: [] as string[],
-  source: 'custom' as const,
-  config_type: 'custom',
+  config_type: 'sftp',
   host: '',
   user: '',
   pass: '',
@@ -87,23 +97,26 @@ const form = ref({
 });
 
 const selectedRemote = ref('');
+const remoteDir = ref('/');
 const extraArgsInput = ref('');
+const saving = ref(false);
 
-const configRemotes = computed(() => {
-  return store.items.filter((item) => item.source === 'config');
+const configRemotes = computed(() => store.items);
+
+const fullRemotePath = computed(() => {
+  const remote = selectedRemote.value || form.value.name;
+  const dir = remoteDir.value.startsWith('/') ? remoteDir.value : '/' + remoteDir.value;
+  return `${remote}:${dir}`;
 });
 
 const isValid = computed(() => {
-  return form.value.name.trim() && form.value.remote_path.trim() && form.value.mount_point.trim();
+  return form.value.name.trim() && remoteDir.value.trim() && form.value.mount_point.trim();
 });
 
 watch(selectedRemote, (val) => {
   if (val) {
     const remote = configRemotes.value.find((r) => r.name === val);
     if (remote) {
-      if (!form.value.remote_path || form.value.remote_path === selectedRemote.value + ':/') {
-        form.value.remote_path = val + ':/';
-      }
       if (!form.value.name) {
         form.value.name = val;
       }
@@ -119,18 +132,33 @@ watch(selectedRemote, (val) => {
       if (!form.value.port && remote.port) {
         form.value.port = remote.port;
       }
+      form.value.config_type = remote.config_type;
     }
   }
 });
 
-watch(extraArgsInput, (val) => {
-  form.value.extra_args = val.trim().split(/\s+/).filter(Boolean);
-});
+async function save() {
+  if (!isValid.value || saving.value) return;
+  saving.value = true;
 
-function save() {
-  if (!isValid.value) return;
+  const options: Record<string, string> = {};
+  if (form.value.host) options.host = form.value.host;
+  if (form.value.user) options.user = form.value.user;
+  if (form.value.pass) options.pass = form.value.pass;
+  if (form.value.port) options.port = form.value.port;
 
-  store.addCustomMount({ ...form.value });
+  const extraArgs = extraArgsInput.value.trim().split(/\s+/).filter(Boolean);
+
+  await store.addAndMount(
+    form.value.name,
+    form.value.config_type,
+    fullRemotePath.value,
+    form.value.mount_point,
+    options,
+    extraArgs
+  );
+
+  saving.value = false;
   emit('saved');
 }
 </script>
@@ -147,6 +175,33 @@ function save() {
 .form-container h2 {
   margin-bottom: 24px;
   font-size: 20px;
+}
+
+.path-input {
+  display: flex;
+  align-items: center;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.path-prefix {
+  background: #f0f0f0;
+  padding: 8px 12px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+  color: #555;
+  border-right: 1px solid #ccc;
+  white-space: nowrap;
+}
+
+.path-input input {
+  flex: 1;
+  border: none;
+  padding: 8px 12px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+  outline: none;
 }
 
 .form-actions {

@@ -82,6 +82,43 @@ pub fn update_remote_config(
 }
 
 #[tauri::command]
+pub fn add_remote_config(
+    manager: State<RcloneManager>,
+    name: String,
+    config_type: String,
+    options: HashMap<String, String>,
+) -> ApiResponse<()> {
+    match manager.add_remote_config(&name, &config_type, options) {
+        Ok(()) => ApiResponse::ok(()),
+        Err(e) => ApiResponse::err(e),
+    }
+}
+
+#[tauri::command]
+pub fn save_mount_pref(
+    manager: State<RcloneManager>,
+    name: String,
+    remote_path: String,
+    mount_point: String,
+) -> ApiResponse<()> {
+    match manager.save_mount_pref(&name, &remote_path, &mount_point) {
+        Ok(()) => ApiResponse::ok(()),
+        Err(e) => ApiResponse::err(e),
+    }
+}
+
+#[tauri::command]
+pub fn save_mount_order(
+    manager: State<RcloneManager>,
+    order: Vec<String>,
+) -> ApiResponse<()> {
+    match manager.save_mount_order(order) {
+        Ok(()) => ApiResponse::ok(()),
+        Err(e) => ApiResponse::err(e),
+    }
+}
+
+#[tauri::command]
 pub fn check_dependencies(manager: State<RcloneManager>) -> ApiResponse<DependencyCheck> {
     let deps = manager.check_dependencies();
     ApiResponse::ok(deps)

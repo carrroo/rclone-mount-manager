@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 
 /// Keys that may be updated in a remote section via the frontend.
-pub const ALLOWED_CONFIG_KEYS: &[&str] = &["host", "user", "pass", "port"];
+pub const ALLOWED_CONFIG_KEYS: &[&str] = &["type", "host", "user", "pass", "port"];
 
 /// Cached regex for matching INI section headers like `[name]`.
 static SECTION_RE: LazyLock<Regex> =
@@ -144,4 +144,71 @@ pub fn update_remote_config(
         .map_err(|e| AppError::WriteConfFailed(e).to_string())?;
 
     Ok(())
+}
+
+/// Add a new remote section to rclone.conf.
+pub fn add_remote(
+    config_path: &Path,
+    name: &str,
+    config_type: &str,
+    options: HashMap<String, String>,
+) -> Result<(), String> {
+    // Check if remote already exists
+    let content = std::fs::read_to_string(config_path)
+        .map_err(|e| AppError::ConfReadFailed(e).to_string())?;
+
+    let section_pattern = format!("[{}]", name);
+    if content.contains(&section_pattern) {
+        return Err(format!("Remote '{}' already exists", name));
+    }
+
+    // Obfuscate password if present
+    let mut final_options = options.clone();
+    if let Some(pass) = options.get("pass") {
+        if !pass.is_empty() {
+            let obscured = obscure_password(pass)?;
+            final_options.insert("pass".to_string(), obscured);
+        }
+    }
+
+    // Build new section
+    let mut new_section = format!("\n[{}]\ntype = {}\n", name, config_type);
+    let mut keys: Vec<&String> = final_options.keys().collect();
+    keys.sort();
+    for key in keys {
+        let val = &final_options[key];
+        if !val.is_empty() {
+            new_section.push_str(&format!("{} = {}\n", key, val));
+        }
+    }
+
+    // Append to file
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(config_path)
+        .map_err(|e| AppError::WriteConfFailed(e).to_string())?;
+
+    use std::io::Write;
+    file.write_all(new_section.as_bytes())
+        .map_err(|e| AppError::WriteConfFailed(e).to_string())?;
+
+    Ok(())
+}
+
+/// Obfuscate a password using `rclone obscure`.
+fn obscure_password(password: &str) -> Result<String, String> {
+    let rclone_path = super::detect::find_rclone()
+        .ok_or_else(|| "rclone not found")?;
+
+    let output = std::process::Command::new(&rclone_path)
+        .arg("obscure")
+        .arg(password)
+        .output()
+        .map_err(|e| format!("Failed to run rclone obscure: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(format!("rclone obscure failed: {}", String::from_utf8_lossy(&output.stderr)))
+    }
 }

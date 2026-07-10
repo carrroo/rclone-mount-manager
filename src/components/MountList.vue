@@ -7,7 +7,7 @@
 
     <div v-else class="cards">
       <div
-        v-for="item in store.items"
+        v-for="(item, index) in store.items"
         :key="item.id"
         class="card"
         :class="{ mounted: item.mounted }"
@@ -17,24 +17,43 @@
             <span class="indicator" :class="{ active: item.mounted }"></span>
             <span>{{ item.name }}</span>
           </div>
-          <span class="badge" :class="{ active: item.mounted }">
-            {{ item.mounted ? t('mount.mounted') : t('mount.unmounted') }}
-          </span>
+          <div class="card-header-right">
+            <div class="move-buttons">
+              <button class="btn-icon" @click="store.moveUp(index)" :disabled="index === 0" title="上移">↑</button>
+              <button class="btn-icon" @click="store.moveDown(index)" :disabled="index === store.items.length - 1" title="下移">↓</button>
+            </div>
+            <span class="badge" :class="{ active: item.mounted }">
+              {{ item.mounted ? t('mount.mounted') : t('mount.unmounted') }}
+            </span>
+          </div>
         </div>
 
         <div class="card-body">
           <div class="info-row">
             <label>{{ t('config.type') }}</label>
-            <code>{{ item.config_type }}</code>
+            <template v-if="editingId === item.id && !item.mounted">
+              <select v-model="editForm.config_type" class="edit-select">
+                <option value="sftp">{{ t('form.typeSftp') }}</option>
+                <option value="webdav">{{ t('form.typeWebdav') }}</option>
+                <option value="http">{{ t('form.typeHttp') }}</option>
+                <option value="ftp">{{ t('form.typeFtp') }}</option>
+              </select>
+            </template>
+            <template v-else>
+              <code>{{ item.config_type }}</code>
+            </template>
           </div>
 
           <div class="info-row">
-            <label>{{ t('config.remotePath') }}</label>
+            <label>{{ t('form.remoteDir') }}</label>
             <template v-if="editingId === item.id && !item.mounted">
-              <input v-model="editForm.remote_path" class="edit-input" />
+              <div class="path-input">
+                <span class="path-prefix">{{ item.name }}:</span>
+                <input v-model="editForm.remote_dir" class="edit-input" />
+              </div>
             </template>
             <template v-else>
-              <code>{{ item.remote_path }}</code>
+              <code>{{ item.name }}:{{ getRemoteDir(item.remote_path, item.name) }}</code>
             </template>
           </div>
 
@@ -72,8 +91,7 @@
           </template>
 
           <div class="info-row tags">
-            <span v-if="item.source === 'config'" class="tag tag-config">{{ t('tag.fromConfig') }}</span>
-            <span v-else class="tag tag-custom">{{ t('tag.custom') }}</span>
+            <span class="tag tag-config">{{ t('tag.config') }}</span>
           </div>
         </div>
 
@@ -108,15 +126,6 @@
               <button class="btn" @click="cancelEdit">{{ t('mount.cancel') }}</button>
             </template>
           </template>
-
-          <button
-            v-if="item.source === 'custom'"
-            class="btn btn-danger"
-            @click="store.removeCustomMount(item.id)"
-            :disabled="store.isPending(item.id)"
-          >
-            {{ t('mount.delete') }}
-          </button>
         </div>
       </div>
     </div>
@@ -132,12 +141,22 @@ import type { MountItem } from '../types';
 const { t } = useI18n();
 const store = useMountStore();
 const editingId = ref<string | null>(null);
-const editForm = ref({ remote_path: '', mount_point: '', host: '', user: '', pass: '', port: '' });
+const editForm = ref({ config_type: 'sftp', remote_dir: '/', mount_point: '', host: '', user: '', pass: '', port: '' });
+
+/** Extract the directory part from a full rclone path like "WUXI:/dir" → "/dir" */
+function getRemoteDir(remotePath: string, name: string): string {
+  const prefix = name + ':';
+  if (remotePath.startsWith(prefix)) {
+    return remotePath.slice(prefix.length);
+  }
+  return remotePath;
+}
 
 function startEdit(item: MountItem) {
   editingId.value = item.id;
   editForm.value = {
-    remote_path: item.remote_path,
+    config_type: item.config_type,
+    remote_dir: getRemoteDir(item.remote_path, item.name),
     mount_point: item.mount_point,
     host: item.host,
     user: item.user,
@@ -147,13 +166,17 @@ function startEdit(item: MountItem) {
 }
 
 function saveEdit(item: MountItem) {
-  store.updateMountConfig(item, editForm.value.remote_path, editForm.value.mount_point, editForm.value.host, editForm.value.user, editForm.value.pass, editForm.value.port);
+  const dir = editForm.value.remote_dir.startsWith('/') ? editForm.value.remote_dir : '/' + editForm.value.remote_dir;
+  const fullRemotePath = `${item.name}:${dir}`;
+  store.updateMountConfig(item, editForm.value.config_type, fullRemotePath, editForm.value.mount_point, editForm.value.host, editForm.value.user, editForm.value.pass, editForm.value.port);
   editingId.value = null;
 }
 
 async function handleMount(item: MountItem) {
   if (editingId.value === item.id) {
-    await store.updateMountConfig(item, editForm.value.remote_path, editForm.value.mount_point, editForm.value.host, editForm.value.user, editForm.value.pass, editForm.value.port);
+    const dir = editForm.value.remote_dir.startsWith('/') ? editForm.value.remote_dir : '/' + editForm.value.remote_dir;
+    const fullRemotePath = `${item.name}:${dir}`;
+    await store.updateMountConfig(item, editForm.value.config_type, fullRemotePath, editForm.value.mount_point, editForm.value.host, editForm.value.user, editForm.value.pass, editForm.value.port);
     editingId.value = null;
   }
   await store.doMount(item);
@@ -230,6 +253,36 @@ function cancelEdit() {
   background: #28a745;
 }
 
+.card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.move-buttons {
+  display: flex;
+  gap: 2px;
+}
+
+.btn-icon {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #555;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .badge {
   padding: 2px 10px;
   border-radius: 10px;
@@ -277,6 +330,39 @@ function cancelEdit() {
   background: #f8fbff;
 }
 
+.edit-select {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  width: 100%;
+  background: #f8fbff;
+}
+
+.path-input {
+  display: flex;
+  align-items: center;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.path-prefix {
+  background: #e8f0fe;
+  padding: 6px 10px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+  color: #1976d2;
+  border-right: 1px solid #007bff;
+  white-space: nowrap;
+}
+
+.path-input .edit-input {
+  border: none;
+  border-radius: 0;
+}
+
 .tags {
   display: flex;
   gap: 8px;
@@ -291,11 +377,6 @@ function cancelEdit() {
 .tag-config {
   background: #e3f2fd;
   color: #1976d2;
-}
-
-.tag-custom {
-  background: #f3e5f5;
-  color: #7b1fa2;
 }
 
 .edit-row {
