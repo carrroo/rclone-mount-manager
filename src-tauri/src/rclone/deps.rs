@@ -1,11 +1,9 @@
 //! Dependency checker — verifies rclone and macFUSE installation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::Serialize;
-
-use super::detect::find_rclone;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DependencyCheck {
@@ -15,11 +13,13 @@ pub struct DependencyCheck {
 }
 
 /// Check whether rclone and macFUSE are installed on the system.
-pub fn check_dependencies() -> DependencyCheck {
-    let rclone_path = find_rclone();
+///
+/// `rclone_path` is an already-resolved rclone binary path. If `None`, rclone
+/// is treated as not installed.
+pub fn check_dependencies(rclone_path: Option<&Path>) -> DependencyCheck {
     let rclone_installed = rclone_path.is_some();
 
-    let rclone_version = if let Some(path) = rclone_path {
+    let rclone_version = rclone_path.and_then(|path| {
         Command::new(path)
             .arg("version")
             .output()
@@ -29,9 +29,7 @@ pub fn check_dependencies() -> DependencyCheck {
                     .ok()
                     .and_then(|s| s.lines().next().map(|l| l.to_string()))
             })
-    } else {
-        None
-    };
+    });
 
     let macfuse_paths = [
         PathBuf::from("/Library/Filesystems/macfuse.fs"),

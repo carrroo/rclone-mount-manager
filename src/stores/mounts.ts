@@ -19,6 +19,14 @@ export const useMountStore = defineStore("mounts", () => {
    *  Prevents one stuck operation from blocking all UI interactions. */
   const pendingOps = ref<Record<string, string>>({});
 
+  /**
+   * Recently completed mount/unmount operations that have not yet been
+   * confirmed by a backend poll. Used to keep the UI in the optimistic
+   * state (`mounted` or `unmounted`) for a short grace period so that a
+   * 5-second background poll does not briefly flip the button back.
+   */
+  const recentOps = ref<Record<string, { op: "mount" | "unmount"; until: number }>>({});
+
   const error = ref<string | null>(null);
 
   const mountedCount = computed(() => {
@@ -32,12 +40,27 @@ export const useMountStore = defineStore("mounts", () => {
 
   /** Fetch all mounts from backend (rclone.conf).
    *  Backend uses saved preferences for user-configured paths. */
-  async function loadMounts() {
+  async function loadMounts(clearError = true) {
+    if (loading.value) return; // skip if a refresh is already in flight
     loading.value = true;
-    error.value = null;
+    if (clearError) error.value = null;
     try {
       const res = (await api.getAllMounts([])) as ApiResponse<MountItem[]>;
       if (res.success && res.data) {
+        const now = Date.now();
+        for (const item of res.data) {
+          const recent = recentOps.value[item.id];
+          if (recent && now < recent.until) {
+            // Keep the optimistic mounted state until the grace period expires.
+            item.mounted = recent.op === "mount";
+          }
+        }
+        // Clean up expired entries.
+        for (const id of Object.keys(recentOps.value)) {
+          if (now >= recentOps.value[id].until) {
+            delete recentOps.value[id];
+          }
+        }
         items.value = res.data;
       } else {
         error.value = res.error || "error.load_failed";
@@ -60,9 +83,13 @@ export const useMountStore = defineStore("mounts", () => {
       const res = await api.mountRemote(item.remote_path, item.mount_point, item.extra_args);
       if (res.success) {
         item.mounted = true;
+        recentOps.value[item.id] = { op: "mount", until: Date.now() + 3000 };
       } else {
         error.value = res.error || "error.mount_failed";
       }
+      // Sync real state immediately so any slow-mount race (e.g. backend
+      // timeout while the OS still finishes mounting) is reconciled quickly.
+      await loadMounts(false);
     } catch (e) {
       error.value = String(e);
     } finally {
@@ -78,9 +105,12 @@ export const useMountStore = defineStore("mounts", () => {
       const res = await api.unmountRemote(item.mount_point);
       if (res.success) {
         item.mounted = false;
+        recentOps.value[item.id] = { op: "unmount", until: Date.now() + 3000 };
       } else {
         error.value = res.error || "error.unmount_failed";
       }
+      // Sync real state immediately.
+      await loadMounts();
     } catch (e) {
       error.value = String(e);
     } finally {
@@ -152,11 +182,13 @@ export const useMountStore = defineStore("mounts", () => {
       const mountRes = await api.mountRemote(remotePath, mountPoint, extraArgs);
       if (mountRes.success) {
         newItem.mounted = true;
+        recentOps.value[newItem.id] = { op: "mount", until: Date.now() + 3000 };
       } else {
         error.value = mountRes.error || "error.mount_failed";
-        return false;
       }
-      return true;
+      // Sync real state immediately.
+      await loadMounts();
+      return mountRes.success;
     } catch (e) {
       error.value = String(e);
       return false;

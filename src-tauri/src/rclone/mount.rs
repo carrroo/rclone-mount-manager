@@ -4,16 +4,17 @@
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::error::AppError;
-use super::detect::{find_rclone, is_path_allowed, is_safe_arg};
+use super::detect::{get_mount_output, is_mount_point_active, is_path_allowed, is_safe_arg};
 
 /// Build an rclone mount command (not yet spawned).
 ///
 /// Returns a `Command` configured with all arguments. The caller is
-/// responsible for spawning it. Stdin is null; stdout/stderr should
-/// be redirected by the caller (e.g. to a log file).
+/// responsible for spawning it. Stdin is null; stdout/stderr should be
+/// redirected by the caller (e.g. to a log file).
 pub fn build_mount_command(
     rclone_path: &Path,
     remote_path: &str,
@@ -49,9 +50,12 @@ pub fn build_mount_command(
 }
 
 /// Execute an rclone mount — spawns rclone as a background process.
-pub fn do_mount(remote_path: &str, mount_point: &str, extra_args: &[String]) -> Result<(), String> {
-    let rclone_path = find_rclone().ok_or_else(|| AppError::RcloneNotFound.to_string())?;
-
+pub fn do_mount(
+    rclone_path: &Path,
+    remote_path: &str,
+    mount_point: &str,
+    extra_args: &[String],
+) -> Result<(), String> {
     if !is_path_allowed(mount_point) {
         return Err(AppError::PathNotAllowed.to_string());
     }
@@ -70,14 +74,46 @@ pub fn do_mount(remote_path: &str, mount_point: &str, extra_args: &[String]) -> 
         .open(&log_path)
         .map_err(|e| AppError::MountFailed(e.to_string()).to_string())?;
 
-    let mut cmd = build_mount_command(&rclone_path, remote_path, mount_point, extra_args)?;
+    let mut cmd = build_mount_command(rclone_path, remote_path, mount_point, extra_args)?;
     cmd.stdout(Stdio::from(log_file.try_clone().map_err(|e| AppError::MountFailed(e.to_string()).to_string())?));
     cmd.stderr(Stdio::from(log_file));
 
-    cmd.spawn()
+    let mut child = cmd.spawn()
         .map_err(|e| AppError::MountFailed(e.to_string()).to_string())?;
 
+    // Wait for the mount point to actually appear in /sbin/mount.
+    // rclone mount returns as soon as the process starts, but the FUSE
+    // filesystem may need several seconds (or longer over slow networks)
+    // to become visible to the OS.
+    if let Err(e) = wait_for_mount(mount_point, Duration::from_secs(30), Duration::from_millis(200)) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(e);
+    }
+
     Ok(())
+}
+
+/// Poll /sbin/mount until the given mount point becomes active.
+///
+/// Returns Ok once the mount point is found in the mount table, or Err if
+/// the timeout expires. This prevents the frontend from showing a mounted
+/// state before the filesystem is actually accessible.
+fn wait_for_mount(mount_point: &str, timeout: Duration, interval: Duration) -> Result<(), String> {
+    let start = Instant::now();
+    loop {
+        let output = get_mount_output();
+        if is_mount_point_active(&output, mount_point) {
+            return Ok(());
+        }
+        if start.elapsed() >= timeout {
+            return Err(AppError::MountFailed(
+                "mount point did not become active within timeout".to_string(),
+            )
+            .to_string());
+        }
+        thread::sleep(interval);
+    }
 }
 
 /// Unmount a filesystem using diskutil, with a timeout fallback.
@@ -85,6 +121,9 @@ pub fn do_mount(remote_path: &str, mount_point: &str, extra_args: &[String]) -> 
 /// If `diskutil unmount force` hangs (common when rclone crashed and
 /// left a zombie FUSE mount), we kill the rclone process for that
 /// mount point and retry once.
+///
+/// This function can block for up to ~10s; callers should run it on a
+/// blocking thread (e.g. via `spawn_blocking`) so it does not freeze the UI.
 pub fn do_unmount(mount_point: &str) -> Result<(), String> {
     // Validate mount_point to prevent injection in kill_rclone_for_mount
     if !is_safe_arg(mount_point) {
@@ -96,7 +135,7 @@ pub fn do_unmount(mount_point: &str) -> Result<(), String> {
 
     // Try unmount with a 10s timeout
     match unmount_with_timeout(mount_point, Duration::from_secs(10)) {
-        Ok(output) if output.status.success() => return Ok(()),
+        Ok(output) if output.status.success() => Ok(()),
         _ => {
             // Failed or timed out — kill rclone and retry once
             kill_rclone_for_mount(mount_point);

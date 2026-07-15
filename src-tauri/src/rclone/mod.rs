@@ -26,6 +26,7 @@ pub(crate) use detect::detect_mounted_remotes;
 pub use detect::{find_rclone, is_path_allowed, is_safe_arg, is_mount_point_active};
 pub use mount::{build_mount_command, do_mount, do_unmount};
 
+use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 
 /// A single mount item (from rclone.conf or custom).
@@ -56,7 +57,14 @@ pub struct RcloneManager {
     /// Cancellation flag for the reconnect monitor thread.
     monitor_cancel: Arc<AtomicBool>,
     /// Handle to the running monitor thread (if any).
+    ///
+    /// `std::sync::Mutex` is intentional: these methods are synchronous and the
+    /// guard is never held across an `.await`. If this code is ever made async,
+    /// switch to `tokio::sync::Mutex`.
     monitor_handle: Mutex<Option<JoinHandle<()>>>,
+    /// Cached path to the rclone binary. Resolved lazily by
+    /// `resolve_rclone_path()`.
+    rclone_path: Mutex<Option<PathBuf>>,
 }
 
 /// Persisted mount preferences (user-configured paths and display order).
@@ -75,6 +83,12 @@ pub struct PrefPaths {
     pub mount_point: String,
 }
 
+impl Default for RcloneManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RcloneManager {
     pub fn new() -> Self {
         let config_path = dirs::home_dir()
@@ -90,7 +104,28 @@ impl RcloneManager {
             prefs_path,
             monitor_cancel: Arc::new(AtomicBool::new(false)),
             monitor_handle: Mutex::new(None),
+            rclone_path: Mutex::new(None),
         }
+    }
+
+    /// Resolve the path to the rclone binary, using a cached value if available.
+    fn resolve_rclone_path(&self) -> Result<PathBuf, String> {
+        // Fast path: already cached.
+        if let Ok(guard) = self.rclone_path.lock()
+            && let Some(path) = guard.clone()
+        {
+            return Ok(path);
+        }
+
+        // Slow path: search the filesystem.
+        let path = find_rclone().ok_or_else(|| AppError::RcloneNotFound.to_string())?;
+
+        // Cache it for subsequent calls.
+        if let Ok(mut guard) = self.rclone_path.lock() {
+            *guard = Some(path.clone());
+        }
+
+        Ok(path)
     }
 
     /// Load persisted mount preferences.
@@ -192,7 +227,8 @@ impl RcloneManager {
     }
 
     pub fn mount(&self, remote_path: &str, mount_point: &str, extra_args: &[String]) -> Result<(), String> {
-        do_mount(remote_path, mount_point, extra_args)
+        let rclone_path = self.resolve_rclone_path()?;
+        do_mount(&rclone_path, remote_path, mount_point, extra_args)
     }
 
     pub fn unmount(&self, mount_point: &str) -> Result<(), String> {
@@ -204,11 +240,13 @@ impl RcloneManager {
     }
 
     pub fn add_remote_config(&self, name: &str, config_type: &str, options: std::collections::HashMap<String, String>) -> Result<(), String> {
-        add_remote(&self.config_path, name, config_type, options)
+        let rclone_path = self.resolve_rclone_path()?;
+        add_remote(&self.config_path, &rclone_path, name, config_type, options)
     }
 
     pub fn check_dependencies(&self) -> DependencyCheck {
-        check_dependencies()
+        let rclone_path = self.resolve_rclone_path().ok();
+        check_dependencies(rclone_path.as_deref())
     }
 
     /// Start the auto-reconnect monitor. Stops any existing monitor first.
@@ -216,11 +254,17 @@ impl RcloneManager {
         // Stop existing monitor if running
         self.stop_reconnect_monitor();
 
+        // If rclone is not available, there is nothing to monitor.
+        let rclone_path = match self.resolve_rclone_path() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+
         // Reset cancellation flag
         self.monitor_cancel.store(false, Ordering::Relaxed);
 
         // Start new monitor
-        let handle = monitor::start_reconnect_monitor(configs, self.monitor_cancel.clone());
+        let handle = monitor::start_reconnect_monitor(rclone_path, configs, self.monitor_cancel.clone());
 
         if let Ok(mut guard) = self.monitor_handle.lock() {
             *guard = handle;
@@ -231,10 +275,10 @@ impl RcloneManager {
     pub fn stop_reconnect_monitor(&self) {
         self.monitor_cancel.store(true, Ordering::Relaxed);
 
-        if let Ok(mut guard) = self.monitor_handle.lock() {
-            if let Some(handle) = guard.take() {
-                let _ = handle.join();
-            }
+        if let Ok(mut guard) = self.monitor_handle.lock()
+            && let Some(handle) = guard.take()
+        {
+            let _ = handle.join();
         }
     }
 }

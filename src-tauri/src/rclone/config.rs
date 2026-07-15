@@ -149,6 +149,7 @@ pub fn update_remote_config(
 /// Add a new remote section to rclone.conf.
 pub fn add_remote(
     config_path: &Path,
+    rclone_path: &Path,
     name: &str,
     config_type: &str,
     options: HashMap<String, String>,
@@ -164,11 +165,11 @@ pub fn add_remote(
 
     // Obfuscate password if present
     let mut final_options = options.clone();
-    if let Some(pass) = options.get("pass") {
-        if !pass.is_empty() {
-            let obscured = obscure_password(pass)?;
-            final_options.insert("pass".to_string(), obscured);
-        }
+    if let Some(pass) = options.get("pass")
+        && !pass.is_empty()
+    {
+        let obscured = obscure_password(rclone_path, pass)?;
+        final_options.insert("pass".to_string(), obscured);
     }
 
     // Build new section
@@ -196,11 +197,8 @@ pub fn add_remote(
 }
 
 /// Obfuscate a password using `rclone obscure`.
-fn obscure_password(password: &str) -> Result<String, String> {
-    let rclone_path = super::detect::find_rclone()
-        .ok_or_else(|| "rclone not found")?;
-
-    let output = std::process::Command::new(&rclone_path)
+fn obscure_password(rclone_path: &Path, password: &str) -> Result<String, String> {
+    let output = std::process::Command::new(rclone_path)
         .arg("obscure")
         .arg(password)
         .output()

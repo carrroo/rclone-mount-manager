@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tauri::{
     image::Image,
     menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu},
@@ -24,7 +26,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(RcloneManager::new())
+        .manage(Arc::new(RcloneManager::new()))
         .invoke_handler(tauri::generate_handler![
             get_all_mounts,
             mount_remote,
@@ -125,7 +127,8 @@ fn main() {
             ])?;
 
             let icon = load_tray_icon()
-                .unwrap_or_else(|| app.default_window_icon().unwrap().clone());
+                .or_else(|| app.default_window_icon().cloned())
+                .ok_or_else(|| "no tray or default icon available".to_string())?;
 
             TrayIconBuilder::with_id("main")
                 .icon(icon)
@@ -148,7 +151,10 @@ fn main() {
                 })
                 .build(app)?;
 
-            let window = app.get_webview_window("main").unwrap();
+            let Some(window) = app.get_webview_window("main") else {
+                eprintln!("main window not found");
+                return Ok(());
+            };
             let window_clone = window.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {

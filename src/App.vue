@@ -12,7 +12,7 @@
         <button class="btn btn-primary" @click="showForm = true">
           {{ t('header.addMount') }}
         </button>
-        <button class="btn" @click="store.loadMounts">{{ t('header.refresh') }}</button>
+        <button class="btn" @click="store.loadMounts()">{{ t('header.refresh') }}</button>
       </div>
     </header>
 
