@@ -5,6 +5,7 @@
     <div class="form-group">
       <label>{{ t('form.name') }}</label>
       <input v-model="form.name" :placeholder="t('form.namePlaceholder')" />
+      <p v-if="nameInvalid" class="error-text">{{ t('form.nameInvalid') }}</p>
     </div>
 
     <div class="form-row">
@@ -31,7 +32,7 @@
     <div class="form-group">
       <label>{{ t('form.remoteDir') }}</label>
       <div class="path-input">
-        <span class="path-prefix" v-if="selectedRemote">{{ selectedRemote }}:</span>
+        <span class="path-prefix" v-if="form.name">{{ form.name }}:</span>
         <input v-model="remoteDir" :placeholder="t('form.remoteDirPlaceholder')" />
       </div>
     </div>
@@ -103,14 +104,22 @@ const saving = ref(false);
 
 const configRemotes = computed(() => store.items);
 
+const nameInvalid = computed(() => {
+  return form.value.name.length > 0 && !/^[A-Za-z0-9_-]+$/.test(form.value.name);
+});
+
 const fullRemotePath = computed(() => {
-  const remote = selectedRemote.value || form.value.name;
   const dir = remoteDir.value.startsWith('/') ? remoteDir.value : '/' + remoteDir.value;
-  return `${remote}:${dir}`;
+  return `${form.value.name}:${dir}`;
 });
 
 const isValid = computed(() => {
-  return form.value.name.trim() && remoteDir.value.trim() && form.value.mount_point.trim();
+  return (
+    form.value.name.trim() &&
+    /^[A-Za-z0-9_-]+$/.test(form.value.name) &&
+    remoteDir.value.trim() &&
+    form.value.mount_point.trim()
+  );
 });
 
 watch(selectedRemote, (val) => {
@@ -209,5 +218,11 @@ async function save() {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
+}
+
+.error-text {
+  color: #dc3545;
+  font-size: 12px;
+  margin-top: 4px;
 }
 </style>

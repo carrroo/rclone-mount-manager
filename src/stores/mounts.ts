@@ -29,6 +29,9 @@ export const useMountStore = defineStore("mounts", () => {
 
   const error = ref<string | null>(null);
 
+  /** Set when a load was skipped because another load was in flight. */
+  let pendingLoad = false;
+
   const mountedCount = computed(() => {
     return items.value.filter((i) => i.mounted).length;
   });
@@ -41,7 +44,12 @@ export const useMountStore = defineStore("mounts", () => {
   /** Fetch all mounts from backend (rclone.conf).
    *  Backend uses saved preferences for user-configured paths. */
   async function loadMounts(clearError = true) {
-    if (loading.value) return; // skip if a refresh is already in flight
+    if (loading.value) {
+      // A refresh is already in flight; schedule another one to run
+      // immediately after it finishes so state stays in sync.
+      pendingLoad = true;
+      return;
+    }
     loading.value = true;
     if (clearError) error.value = null;
     try {
@@ -69,6 +77,10 @@ export const useMountStore = defineStore("mounts", () => {
       error.value = String(e);
     } finally {
       loading.value = false;
+      if (pendingLoad) {
+        pendingLoad = false;
+        await loadMounts(clearError);
+      }
     }
   }
 
@@ -216,9 +228,16 @@ export const useMountStore = defineStore("mounts", () => {
   /** Debounced save order — waits 500ms after last change. */
   function debouncedSaveOrder() {
     if (orderTimer) clearTimeout(orderTimer);
-    orderTimer = setTimeout(() => {
+    orderTimer = setTimeout(async () => {
       const order = items.value.map(i => i.name);
-      api.saveMountOrder(order);
+      try {
+        const res = await api.saveMountOrder(order);
+        if (!res.success) {
+          error.value = res.error || "error.save_order_failed";
+        }
+      } catch (e) {
+        error.value = String(e);
+      }
     }, 500);
   }
 

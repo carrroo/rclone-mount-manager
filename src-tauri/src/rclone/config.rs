@@ -15,6 +15,30 @@ use crate::error::AppError;
 /// Keys that may be updated in a remote section via the frontend.
 pub const ALLOWED_CONFIG_KEYS: &[&str] = &["type", "host", "user", "pass", "port"];
 
+/// Remote types that may be created or switched to via the frontend.
+pub const ALLOWED_REMOTE_TYPES: &[&str] = &["sftp", "webdav", "http", "ftp"];
+
+/// Validate a remote name: letters, digits, underscore, hyphen only.
+/// rclone section names must not contain shell metacharacters, brackets,
+/// whitespace, or newlines.
+fn is_valid_remote_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Validate a remote type value.
+fn is_valid_remote_type(config_type: &str) -> bool {
+    ALLOWED_REMOTE_TYPES.contains(&config_type)
+}
+
+/// Validate a config value before writing it to rclone.conf.
+/// Rejects values that would corrupt the INI structure (newlines/carriage returns).
+fn is_valid_config_value(value: &str) -> bool {
+    !value.contains('\n') && !value.contains('\r')
+}
+
 /// Cached regex for matching INI section headers like `[name]`.
 static SECTION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[(.+?)\]").unwrap());
@@ -92,11 +116,25 @@ pub fn update_remote_config(
         return Ok(());
     }
 
-    // Only allow whitelisted keys
+    // Only allow whitelisted keys and validate values.
     let allowed: HashSet<&str> = ALLOWED_CONFIG_KEYS.iter().copied().collect();
-    for key in updates.keys() {
+    for (key, value) in &updates {
         if !allowed.contains(key.as_str()) {
             return Err(AppError::InvalidKey(key.clone()).to_string());
+        }
+        if !is_valid_config_value(value) {
+            return Err(AppError::InvalidArg(format!(
+                "value for '{}' contains invalid characters",
+                key
+            ))
+            .to_string());
+        }
+        if key == "type" && !is_valid_remote_type(value) {
+            return Err(AppError::InvalidArg(format!(
+                "invalid remote type: {}",
+                value
+            ))
+            .to_string());
         }
     }
 
@@ -154,6 +192,36 @@ pub fn add_remote(
     config_type: &str,
     options: HashMap<String, String>,
 ) -> Result<(), String> {
+    // Validate section name and type to prevent config injection.
+    if !is_valid_remote_name(name) {
+        return Err(AppError::InvalidArg(format!(
+            "invalid remote name: {}",
+            name
+        ))
+        .to_string());
+    }
+    if !is_valid_remote_type(config_type) {
+        return Err(AppError::InvalidArg(format!(
+            "invalid remote type: {}",
+            config_type
+        ))
+        .to_string());
+    }
+
+    let allowed: HashSet<&str> = ALLOWED_CONFIG_KEYS.iter().copied().collect();
+    for (key, value) in &options {
+        if !allowed.contains(key.as_str()) {
+            return Err(AppError::InvalidKey(key.clone()).to_string());
+        }
+        if !is_valid_config_value(value) {
+            return Err(AppError::InvalidArg(format!(
+                "value for '{}' contains invalid characters",
+                key
+            ))
+            .to_string());
+        }
+    }
+
     // Check if remote already exists
     let content = std::fs::read_to_string(config_path)
         .map_err(|e| AppError::ConfReadFailed(e).to_string())?;
@@ -172,11 +240,15 @@ pub fn add_remote(
         final_options.insert("pass".to_string(), obscured);
     }
 
-    // Build new section
+    // Build new section. `type` is already written from config_type, so
+    // skip it if the caller also included it in options.
     let mut new_section = format!("\n[{}]\ntype = {}\n", name, config_type);
     let mut keys: Vec<&String> = final_options.keys().collect();
     keys.sort();
     for key in keys {
+        if key == "type" {
+            continue;
+        }
         let val = &final_options[key];
         if !val.is_empty() {
             new_section.push_str(&format!("{} = {}\n", key, val));
@@ -197,16 +269,34 @@ pub fn add_remote(
 }
 
 /// Obfuscate a password using `rclone obscure`.
+///
+/// Reads the password from stdin so it does not appear in the process
+/// command line.
 fn obscure_password(rclone_path: &Path, password: &str) -> Result<String, String> {
-    let output = std::process::Command::new(rclone_path)
+    let mut child = std::process::Command::new(rclone_path)
         .arg("obscure")
-        .arg(password)
-        .output()
+        .arg("-")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to run rclone obscure: {}", e))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(password.as_bytes());
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to read rclone obscure output: {}", e))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
-        Err(format!("rclone obscure failed: {}", String::from_utf8_lossy(&output.stderr)))
+        Err(format!(
+            "rclone obscure failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
     }
 }

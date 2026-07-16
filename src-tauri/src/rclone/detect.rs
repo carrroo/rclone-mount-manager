@@ -50,14 +50,26 @@ pub fn find_rclone() -> Option<PathBuf> {
 ///
 /// Tries `canonicalize` first (resolves symlinks, confirms existence).
 /// Falls back to prefix matching when the path doesn't exist (e.g. a
-/// stale mount point during unmount).
+/// stale mount point during unmount). If the home directory cannot be
+/// determined, only `/Volumes/` is allowed in the fallback.
 pub fn is_path_allowed(path: &str) -> bool {
     if let Ok(p) = PathBuf::from(path).canonicalize() {
-        return p.starts_with("/Volumes/") || p.starts_with(dirs::home_dir().unwrap_or_default());
+        if p.starts_with("/Volumes/") {
+            return true;
+        }
+        return dirs::home_dir()
+            .map(|h| !h.as_os_str().is_empty() && p.starts_with(h))
+            .unwrap_or(false);
     }
-    // Fallback: string-based prefix check for paths that may not exist
-    path.starts_with("/Volumes/") || dirs::home_dir()
-        .map(|h| path.starts_with(&h.to_string_lossy().to_string()))
+    // Fallback: string-based prefix check for paths that may not exist.
+    if path.starts_with("/Volumes/") {
+        return true;
+    }
+    dirs::home_dir()
+        .map(|h| {
+            let home_str = h.to_string_lossy().to_string();
+            !home_str.is_empty() && path.starts_with(&home_str)
+        })
         .unwrap_or(false)
 }
 

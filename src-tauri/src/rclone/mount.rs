@@ -203,14 +203,38 @@ fn unmount_with_timeout(mount_point: &str, timeout: Duration) -> Result<std::pro
     }
 }
 
+/// Escape a literal string so it can be safely embedded into a POSIX ERE
+/// regex used by `pgrep -f`.
+fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' | '.' | '*' | '?' | '+' | '[' | ']' | '(' | ')' | '{' | '}' | '^' | '$'
+            | '|' => out.push('\\'),
+            _ => {}
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// Find and kill the rclone process serving a specific mount point.
 ///
 /// Uses `pgrep -f` to find rclone processes whose command-line args
-/// contain the mount point, then sends SIGKILL via `kill -9`.
-/// Runs pgrep and kill as separate commands (no shell interpolation)
-/// to avoid shell injection.
+/// contain the mount point as the third positional argument, then sends
+/// SIGKILL via `kill -9`. Runs pgrep and kill as separate commands
+/// (no shell interpolation) to avoid shell injection.
 fn kill_rclone_for_mount(mount_point: &str) {
-    let pattern = format!("rclone mount.*{}", mount_point.replace("'", "'\\''"));
+    // Match the mount_point as a whitespace-delimited argument anywhere in
+    // the rclone mount command line, followed by whitespace or end-of-line:
+    //   rclone mount ... <mount_point>[whitespace or end]
+    // This avoids matching a mount_point that is merely a substring of
+    // another path or argument.
+    let escaped = regex_escape(mount_point);
+    let pattern = format!(
+        "rclone mount.*[[:space:]]+{}([[:space:]]|$)",
+        escaped
+    );
 
     // pgrep returns matching PIDs, one per line
     let output = match Command::new("pgrep")

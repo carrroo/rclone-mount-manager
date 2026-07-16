@@ -30,6 +30,7 @@ export default {
     remoteDirPlaceholder: 'e.g.: /movies or /data/files',
     mountPointPlaceholder: 'e.g.: /Volumes/nas-movies',
     namePlaceholder: 'e.g.: NAS Movies',
+    nameInvalid: 'Name can only contain letters, numbers, underscores and hyphens',
     hostPlaceholder: 'e.g.: 192.168.1.1',
     portPlaceholder: 'e.g.: 22',
     userPlaceholder: 'e.g.: admin',
@@ -77,6 +78,7 @@ export default {
     write_conf_failed: 'Failed to write rclone.conf: {msg}',
     unmount_failed: 'Unmount failed: {msg}',
     load_failed: 'Failed to load mounts',
+    save_order_failed: 'Failed to save mount order',
   },
   about: {
     desc: 'A macOS rclone mount manager',

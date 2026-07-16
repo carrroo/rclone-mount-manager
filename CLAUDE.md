@@ -42,15 +42,15 @@ There are no tests, linter, or formatter configured.
 ### Backend (`src-tauri/src/`)
 
 - **main.rs** — app entry: initializes language state, registers `RcloneManager` as managed state, sets up macOS menu (Open/About/Quit + language submenu), system tray (Open/Quit), intercepts window close to hide instead of quit.
-- **commands.rs** — 6 Tauri command handlers: `get_all_mounts`, `mount_remote`, `unmount_remote`, `update_remote_config`, `check_dependencies`, `get_language`, `set_language`. All return `ApiResponse<T>` (except language commands).
-- **rclone/** — core logic module with sub-modules: `config`, `detect`, `mount`, `deps`, `monitor`
-  - `RcloneManager` holds path to `~/.config/rclone/rclone.conf`, plus cancellation flag and JoinHandle for the monitor thread
+- **commands.rs** — Tauri command handlers: `get_all_mounts`, `mount_remote`, `unmount_remote`, `update_remote_config`, `add_remote_config`, `save_mount_pref`, `save_mount_order`, `check_dependencies`, `get_language`, `set_language`. All return `ApiResponse<T>` (except language commands).
+- **rclone/** — core logic module with sub-modules: `config`, `detect`, `mount`, `deps`
+  - `RcloneManager` holds path to `~/.config/rclone/rclone.conf` and `~/.config/rclone-mount-manager/mount_prefs.json`, plus a cached rclone binary path.
   - Parses rclone.conf via cached regex (`LazyLock`)
   - Detects mounted filesystems by running `/sbin/mount`
   - Mount: validates paths (must be under `/Volumes/` or home), blocks shell metacharacters via `is_safe_arg()`, spawns `rclone mount` directly (no shell), passes `--allow-non-empty`, logs to `~/Library/Caches/rclone-mount-manager/rclone-mount.log`
   - Unmount: validates mount point, runs `diskutil unmount force` with 10s timeout, kills rclone process and retries on hang
-  - Config updates: modifies rclone.conf in-place, whitelisted to `host`/`user`/`pass`/`port` keys
-  - Reconnect monitor: background thread polls `/sbin/mount` every 30s, auto-remounts dropped custom mounts, supports cancellation via `AtomicBool` flag
+  - Config updates: modifies rclone.conf in-place, whitelisted to `type`/`host`/`user`/`pass`/`port` keys; new remote sections validated before append
+  - Path preferences: persists user-edited remote paths and display order in `~/.config/rclone-mount-manager/mount_prefs.json`
 - **lang.rs** — language state via single `AtomicU8` (0=system, 1=zh, 2=en), persists to `~/.config/rclone-mount-manager/language`, emits `language-changed` event to frontend, provides Rust-side `t()` translations for menu items.
 
 ### Key Design Points

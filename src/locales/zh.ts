@@ -30,6 +30,7 @@ export default {
     remoteDirPlaceholder: '如：/movies 或 /data/files',
     mountPointPlaceholder: '如：/Volumes/nas-movies',
     namePlaceholder: '如：NAS 电影库',
+    nameInvalid: '名称只能包含字母、数字、下划线和连字符',
     hostPlaceholder: '如：192.168.1.1',
     portPlaceholder: '如：22',
     userPlaceholder: '如：admin',
@@ -77,6 +78,7 @@ export default {
     write_conf_failed: '写入 rclone.conf 失败: {msg}',
     unmount_failed: '卸载失败: {msg}',
     load_failed: '加载失败',
+    save_order_failed: '保存排序失败',
   },
   about: {
     desc: '一个 macOS 上的 rclone 挂载管理工具',
