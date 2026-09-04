@@ -39,7 +39,6 @@ import MountList from "./components/MountList.vue";
 import MountForm from "./components/MountForm.vue";
 import DependencyCheck from "./components/DependencyCheck.vue";
 import AboutDialog from "./components/AboutDialog.vue";
-import type { Deps, ApiResponse } from "./types";
 import { checkDependencies } from "./api";
 import { useToast } from "./composables/useToast";
 
@@ -58,7 +57,7 @@ function onSaved() {
 
 async function checkDeps(showOnlyOnError = false) {
   try {
-    const res = await checkDependencies() as ApiResponse<Deps>;
+    const res = await checkDependencies();
     if (res.success && res.data) {
       const { rclone_installed, macfuse_installed } = res.data;
       if (!showOnlyOnError || !rclone_installed || !macfuse_installed) {

@@ -4,7 +4,6 @@ export interface MountItem {
   name: string;
   remote_path: string;
   mount_point: string;
-  source: string;
   mounted: boolean;
   config_type: string;
   extra_args: string[];

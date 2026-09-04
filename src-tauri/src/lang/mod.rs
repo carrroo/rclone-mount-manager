@@ -11,7 +11,6 @@ mod translate;
 
 pub use menu::update_lang_menu_text;
 pub use state::{
-    apply_lang, current_lang, current_lang_code, init_language_state,
-    LANG_CODE_SYSTEM, LANG_CODE_ZH, LANG_CODE_EN,
+    apply_lang, current_lang, init_language_state,
 };
 pub use translate::{build_lang_text, t};

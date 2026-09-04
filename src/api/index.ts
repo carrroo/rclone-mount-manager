@@ -7,7 +7,7 @@
  * shapes are defined in one place.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { ApiResponse } from "../types";
+import type { ApiResponse, MountItem, Deps } from "../types";
 
 /** Type-safe wrapper around Tauri's invoke(). */
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<ApiResponse<T>> {
@@ -16,9 +16,9 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<Api
 
 // ── Mounts ────────────────────────────────────────────────
 
-/** Fetch all mount items (config-sourced + custom), merging mount status. */
-export async function getAllMounts(customMounts: unknown) {
-  return call<unknown[]>("get_all_mounts", { customMounts });
+/** Fetch all mount items from rclone.conf, merged with live mount status. */
+export async function getAllMounts() {
+  return call<MountItem[]>("get_all_mounts");
 }
 
 /** Mount a remote path to a local mount point. */
@@ -57,7 +57,7 @@ export async function saveMountOrder(order: string[]) {
 
 /** Check whether rclone and macFUSE are installed. */
 export async function checkDependencies() {
-  return call<unknown>("check_dependencies");
+  return call<Deps>("check_dependencies");
 }
 
 // ── Language ──────────────────────────────────────────────

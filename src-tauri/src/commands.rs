@@ -48,11 +48,10 @@ pub type CmdResult<T> = Result<ApiResponse<T>, String>;
 #[tauri::command]
 pub async fn get_all_mounts(
     manager: State<'_, Arc<RcloneManager>>,
-    custom_mounts: Vec<MountItem>,
 ) -> CmdResult<Vec<MountItem>> {
     let manager = manager.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        manager.get_all_mounts(custom_mounts)
+        manager.get_all_mounts()
     }).await.map_err(|e| format!("background task failed: {}", e))?;
 
     Ok(match result {

@@ -36,17 +36,6 @@ pub fn current_lang() -> &'static str {
     }
 }
 
-/// Return the current language code for display purposes.
-pub fn current_lang_code() -> u8 {
-    LANG.load(Ordering::SeqCst)
-}
-
-/// Resolve the effective locale ("zh" or "en") by expanding "system".
-#[allow(dead_code)]
-pub fn resolved_lang() -> &'static str {
-    resolved_lang_from(current_lang())
-}
-
 /// Internal: resolve a language code to "zh" or "en".
 pub(crate) fn resolved_lang_from(current: &str) -> &'static str {
     match current {

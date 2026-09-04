@@ -106,9 +106,12 @@ pub fn read_remotes(config_path: &Path) -> Result<Vec<RemoteConfig>, String> {
 }
 
 /// Update specific keys in a remote section of rclone.conf.
-/// Only whitelisted keys are allowed (host, user, pass, port).
+/// Only whitelisted keys are allowed (type, host, user, pass, port).
+/// A non-empty `pass` update is obfuscated via `rclone obscure` before
+/// being written, matching the behavior of `add_remote`.
 pub fn update_remote_config(
     config_path: &Path,
+    rclone_path: &Path,
     name: &str,
     updates: HashMap<String, String>,
 ) -> Result<(), String> {
@@ -141,8 +144,17 @@ pub fn update_remote_config(
     let content = std::fs::read_to_string(config_path)
         .map_err(|e| AppError::ConfReadFailed(e).to_string())?;
 
+    // Obfuscate a newly-set password so it is not stored in plaintext.
+    let mut updates = updates;
+    if let Some(pass) = updates.get("pass").cloned()
+        && !pass.is_empty()
+    {
+        updates.insert("pass".to_string(), obscure_password(rclone_path, &pass)?);
+    }
+
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
     let mut in_target = false;
+    let mut found = false;
     let mut remaining: HashSet<String> = updates.keys().cloned().collect();
     let mut insert_pos: Option<usize> = None;
 
@@ -154,6 +166,9 @@ pub fn update_remote_config(
                 break;
             }
             in_target = caps[1].to_string() == name;
+            if in_target {
+                found = true;
+            }
         } else if in_target {
             if let Some(caps) = KV_FULL_RE.captures(&lines[i]) {
                 let key = caps[2].to_string();
@@ -163,6 +178,13 @@ pub fn update_remote_config(
                 }
             }
         }
+    }
+
+    // The target section was never found — refuse to write, otherwise the
+    // remaining keys would be appended to the end of the file and silently
+    // merged into the last section.
+    if !found {
+        return Err(AppError::RemoteNotFound(name.to_string()).to_string());
     }
 
     let insert_at = insert_pos.unwrap_or(lines.len());

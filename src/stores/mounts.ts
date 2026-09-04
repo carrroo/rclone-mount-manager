@@ -6,7 +6,7 @@
  */
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { MountItem, ApiResponse } from "../types";
+import type { MountItem } from "../types";
 import * as api from "../api";
 
 export const useMountStore = defineStore("mounts", () => {
@@ -53,7 +53,7 @@ export const useMountStore = defineStore("mounts", () => {
     loading.value = true;
     if (clearError) error.value = null;
     try {
-      const res = (await api.getAllMounts([])) as ApiResponse<MountItem[]>;
+      const res = await api.getAllMounts();
       if (res.success && res.data) {
         const now = Date.now();
         for (const item of res.data) {
@@ -179,7 +179,6 @@ export const useMountStore = defineStore("mounts", () => {
         name,
         remote_path: remotePath,
         mount_point: mountPoint,
-        source: "config",
         mounted: false,
         config_type: configType,
         extra_args: extraArgs,

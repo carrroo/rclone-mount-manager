@@ -29,6 +29,9 @@ pub enum AppError {
     #[error("error.write_conf_failed:invalid key: {0}")]
     InvalidKey(String),
 
+    #[error("error.remote_not_found:{0}")]
+    RemoteNotFound(String),
+
     #[error("error.mount_failed:invalid extra arg: {0}")]
     InvalidArg(String),
 

@@ -77,6 +77,7 @@ export default {
     mount_failed: 'Failed to start rclone mount: {msg}',
     write_conf_failed: 'Failed to write rclone.conf: {msg}',
     unmount_failed: 'Unmount failed: {msg}',
+    remote_not_found: 'Remote not found in rclone.conf: {msg}',
     load_failed: 'Failed to load mounts',
     save_order_failed: 'Failed to save mount order',
   },

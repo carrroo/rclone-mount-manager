@@ -35,7 +35,7 @@ There are no tests, linter, or formatter configured.
 - **App.vue** — root shell: header with mount-count badge, toggles between MountList/MountForm views, dependency check modal, about dialog. Polls mount status every 5s via `setInterval`, pauses when window is hidden.
 - **Components:** `MountList.vue` (cards with inline editing, mount/unmount/delete), `MountForm.vue` (add custom mount with remote selector from rclone.conf), `DependencyCheck.vue` (rclone/macFUSE status), `AboutDialog.vue`
 - **Pinia stores:**
-  - `mounts.ts` — central state: `items`, `loading`, `mountedCount`. Bridges frontend ↔ Rust via Tauri `invoke()` calls. Persists custom mounts and remote config overrides in localStorage (`rclone-remote-configs`, `rclone-mounts` keys).
+  - `mounts.ts` — central state: `items`, `loading`, `mountedCount`. Bridges frontend ↔ Rust via Tauri `invoke()` calls. Mount state comes from rclone.conf (via Rust backend); user-edited paths and display order are persisted by the backend in `~/.config/rclone-mount-manager/mount_prefs.json`.
   - `settings.ts` — language setting (`"zh" | "en" | "system"`). Syncs with Rust backend via `get_language`/`set_language` commands and listens for `language-changed` Tauri events.
 - **Locales:** `en.ts`, `zh.ts` — full translation dictionaries; `index.ts` sets up vue-i18n with system locale detection.
 
@@ -56,7 +56,7 @@ There are no tests, linter, or formatter configured.
 ### Key Design Points
 
 - **Menu bar app pattern:** closing window hides it; tray icon persists; dock click reopens via macOS `Reopen` event.
-- **Dual persistence:** custom mounts/config overrides in localStorage; actual rclone.conf managed by Rust backend.
+- **Persistence:** remotes live in rclone.conf (managed by Rust backend); user-edited remote paths and display order live in `~/.config/rclone-mount-manager/mount_prefs.json`. Passwords are obfuscated via `rclone obscure` before being written to rclone.conf (both on add and on update).
 - **Language stored in two places:** Rust writes to `~/.config/rclone-mount-manager/language`; frontend syncs via Tauri commands.
 - **Security:** `is_safe_arg()` blocks shell metacharacters; `is_path_allowed()` restricts mount points to `/Volumes/` or home directory; config updates whitelisted to specific keys; rclone spawned directly (no shell); unmount validates mount point before killing processes; passwords not persisted in localStorage.
 - **Tauri capabilities** defined in `src-tauri/capabilities/default.json`.

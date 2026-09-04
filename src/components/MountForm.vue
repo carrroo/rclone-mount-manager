@@ -158,7 +158,7 @@ async function save() {
 
   const extraArgs = extraArgsInput.value.trim().split(/\s+/).filter(Boolean);
 
-  await store.addAndMount(
+  const ok = await store.addAndMount(
     form.value.name,
     form.value.config_type,
     fullRemotePath.value,
@@ -168,7 +168,11 @@ async function save() {
   );
 
   saving.value = false;
-  emit('saved');
+  // Keep the form open on failure so the user's input is not lost;
+  // the error toast shown by the store explains what went wrong.
+  if (ok) {
+    emit('saved');
+  }
 }
 </script>
 

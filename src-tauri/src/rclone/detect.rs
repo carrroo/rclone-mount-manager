@@ -15,8 +15,9 @@ pub(crate) struct DetectedMount {
 
 /// Cached regex for parsing `/sbin/mount` output lines.
 /// Matches lines like: `remote:path on /Volumes/mp (fstype, ...)`
+/// capturing the device, mount point, and filesystem type.
 static MOUNT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^([^:]+:.*?)\s+on\s+(.+?)\s+\(").unwrap());
+    LazyLock::new(|| Regex::new(r"^([^:]+:.*?)\s+on\s+(.+?)\s+\((\w+)").unwrap());
 
 /// Cached regex for extracting mount points from `/sbin/mount` output.
 static MOUNT_POINT_RE: LazyLock<Regex> =
@@ -88,11 +89,20 @@ pub fn get_mount_output() -> String {
 
 /// Parse the mount output to detect rclone-remoted filesystems.
 /// Returns a map from remote name → (remote_path, mount_point).
+///
+/// Only FUSE mounts (macFUSE reports `osxfuse`, newer versions `macfuse`)
+/// are considered — without this filter an NFS mount like
+/// `server:/export on /mnt (nfs, ...)` whose server name happens to match
+/// a remote name would be falsely reported as mounted.
 pub(crate) fn detect_mounted_remotes(mount_output: &str) -> HashMap<String, DetectedMount> {
     let mut detected: HashMap<String, DetectedMount> = HashMap::new();
 
     for line in mount_output.lines() {
         if let Some(caps) = MOUNT_RE.captures(line) {
+            let fstype = &caps[3];
+            if !matches!(fstype, "osxfuse" | "macfuse" | "fusefs") {
+                continue;
+            }
             let full_remote = caps[1].trim();
             let mount_point = caps[2].trim();
             if let Some(colon_pos) = full_remote.find(':') {
